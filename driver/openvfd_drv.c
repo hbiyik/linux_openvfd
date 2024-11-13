@@ -173,11 +173,8 @@ static void init_controller(struct vfd_dev *dev)
 	}
 }
 
-static const char* current_text = NULL;
-
 static int openvfd_dev_open(struct inode *inode, struct file *file)
 {
-	current_text = NULL;
 	struct vfd_dev *dev = NULL;
 	file->private_data = pdata->dev;
 	dev = file->private_data;
@@ -187,13 +184,22 @@ static int openvfd_dev_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static struct vfd_display_data current_display_data;
+
+static inline
+size_t display_data(struct vfd_display_data* data) {
+	size_t ret = controller->write_display_data(data);
+	if (data != &current_display_data)
+		current_display_data = *data;
+	return ret;
+}
+
 static inline
 void display_text(const char* text) {
-	if (controller == NULL || text == NULL) return;
-	u_int16 data[7] = { 0 };
-	str_to_masks(data, text);
-	controller->write_data((unsigned char*)data, sizeof(data));
-	current_text = text;
+	memset(&current_display_data, 0, sizeof(current_display_data));
+	current_display_data.mode = DISPLAY_MODE_TITLE;
+	snprintf(current_display_data.string_main, sizeof(current_display_data.string_main), text);
+	display_data(&current_display_data);
 }
 
 static int openvfd_dev_release(struct inode *inode, struct file *file)
@@ -251,7 +257,7 @@ static ssize_t openvfd_dev_write(struct file *filp, const char __user * buf,
 		missing = copy_from_user(&data, buf, count);
 		if (missing == 0 && count > 0) {
 			mutex_lock(&mutex);
-			if (controller->write_display_data(&data))
+			if (display_data(&data))
 				pr_dbg("openvfd_dev_write count : %ld\n", count);
 			else {
 				status = -1;
@@ -539,7 +545,7 @@ static ssize_t led_on_store(struct device *dev,
 {
 	mutex_lock(&mutex);
 	controller->set_icon(buf, 1);
-	display_text(current_text);
+	display_data(&current_display_data);
 	mutex_unlock(&mutex);
 	return size;
 }
@@ -555,7 +561,7 @@ static ssize_t led_off_store(struct device *dev,
 {
 	mutex_lock(&mutex);
 	controller->set_icon(buf, 0);
-	display_text(current_text);
+	display_data(&current_display_data);
 	mutex_unlock(&mutex);
 	return size;
 }
