@@ -48,6 +48,7 @@ static struct early_suspend openvfd_early_suspend;
 #endif
 
 unsigned char vfd_display_auto_power = 1;
+static uint vfd_brightness = FD628_Brightness_8;
 unsigned char vfd_show_boot = 1;
 unsigned char vfd_show_stop = 1;
 
@@ -93,12 +94,35 @@ static u_int32 FD628_GetKey(struct vfd_dev *dev)
 	return (FD628_KeyData);
 }
 
+static int unlocked_set_display_brightness(u_int8 new_brightness)
+{
+    int ret = controller->set_brightness_level(new_brightness);
+    if (!ret){
+        pr_info("OpenVFD: Can't set brightness to %d, %d\n", new_brightness, ret);
+        return ret;
+    }
+
+    pr_info("OpenVFD: Brightness is set to %d\n", new_brightness);
+    return 0;
+}
+
+static void locked_set_display_brightness(struct led_classdev *cdev,
+    enum led_brightness brightness)
+{
+    if(pdata == NULL)
+        return;
+
+    mutex_lock(&mutex);
+    unlocked_set_display_brightness(brightness);
+    mutex_unlock(&mutex);
+}
+
 static void unlocked_set_power(unsigned char state)
 {
 	if (vfd_display_auto_power && controller) {
 		controller->set_power(state);
 		if (state && pdata)
-			controller->set_brightness_level(pdata->dev->brightness);
+		    unlocked_set_display_brightness(pdata->dev->brightness);
 	}
 }
 
@@ -290,11 +314,6 @@ static ssize_t openvfd_dev_write(struct file *filp, const char __user * buf,
 	return status;
 }
 
-static int set_display_brightness(struct vfd_dev *dev, u_int8 new_brightness)
-{
-	return controller->set_brightness_level(new_brightness);
-}
-
 static void set_display_type(struct vfd_dev *dev, int new_display_type)
 {
 	memcpy(&dev->dtb_active.display, &new_display_type, sizeof(struct vfd_display));
@@ -364,7 +383,7 @@ static long openvfd_dev_ioctl(struct file *filp, unsigned int cmd,
 		break;
 	case VFD_IOC_SBRIGHT:
 		ret = __get_user(temp, (int __user *)arg);
-		if (!ret && !set_display_brightness(dev, (u_int8)temp))
+		if (!ret && !unlocked_set_display_brightness((u_int8)temp))
 			ret = -ERANGE;
 		break;
 	case VFD_IOC_GBRIGHT:
@@ -438,16 +457,6 @@ static void deregister_openvfd_driver(void)
 #endif
 }
 
-
-static void openvfd_brightness_set(struct led_classdev *cdev,
-	enum led_brightness brightness)
-{
-	pr_info("brightness = %d\n", brightness);
-
-	if(pdata == NULL)
-		return;
-}
-
 static int led_cmd_ioc = 0;
 
 static ssize_t led_cmd_show(struct device *dev,
@@ -500,7 +509,7 @@ static ssize_t led_cmd_store(struct device *_dev,
 			//FD628_SET_DISPLAY_MODE(dev->mode, dev);
 			break;
 		case VFD_IOC_SBRIGHT:
-			if (!set_display_brightness(dev, (u_int8)temp))
+			if (!unlocked_set_display_brightness((u_int8)temp))
 				size = -ERANGE;
 			break;
 		case VFD_IOC_POWER:
@@ -937,7 +946,7 @@ static int openvfd_driver_probe(struct platform_device *pdev)
 		goto get_gpio_req_fail;
 
 	pdata->dev->dtb_default = pdata->dev->dtb_active;
-	pdata->dev->brightness = 0xFF;
+	pdata->dev->brightness = vfd_brightness;
 
 	mutex_lock(&mutex);
 	register_openvfd_driver();
@@ -948,7 +957,9 @@ static int openvfd_driver_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 	kp->cdev.name = DEV_NAME;
-	kp->cdev.brightness_set = openvfd_brightness_set;
+	kp->cdev.brightness_set = locked_set_display_brightness;
+	kp->cdev.max_brightness = FD628_Brightness_8;
+	kp->cdev.brightness = vfd_brightness;
 	ret = led_classdev_register(&pdev->dev, &kp->cdev);
 	if (ret < 0) {
 		kfree(kp);
@@ -1111,6 +1122,7 @@ static void __exit openvfd_driver_exit(void)
 	pr_dbg2("OpenVFD Driver exit.\n");
 }
 
+module_param(vfd_brightness, uint, 0444);
 module_init(openvfd_driver_init);
 module_exit(openvfd_driver_exit);
 
