@@ -617,8 +617,8 @@ bool print_usage(int argc, char *argv[])
 		if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
 			ret = true;
 			printf("\nUsage: OpenVFDService [-t] [-dt TYPE] [-h]\n\n");
-			printf("\t-s USER_STRING\tRun OpenVFDService in custom string mode.\n\t\t\tDisplays the USER_STRING on the screen.");
-			printf("\t-ss SECONDARY_USER_STRING\tDisplay a smaller secondary string\n\t\t\tin addtion to USER_STRING.");
+			printf("\t-s USER_STRING\tRun OpenVFDService in custom string mode.\n\t\t\tDisplays the USER_STRING on the screen.\n");
+			printf("\t-ss SECONDARY_USER_STRING\tDisplay a smaller secondary string\n\t\t\tin addtion to USER_STRING.\n");
 			printf("\t-t\t\tRun OpenVFDService in display test mode.\n");
 			printf("\t-dm\t\tRun OpenVFDService in display demo mode.\n");
 			printf("\t-dt N\t\tSpecifies which display type to use.\n");
